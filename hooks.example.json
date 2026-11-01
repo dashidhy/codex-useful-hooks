@@ -1,0 +1,31 @@
+{
+  "description": "After compaction, recover context from repository files, conversation history, and Git.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^compact$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/simple-context-hook/context_hook.py",
+            "timeout": 30,
+            "statusMessage": "Context recovery: Prepare history snapshot",
+            "additionalContextLimit": 1024
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/simple-context-hook/context_hook.py",
+            "timeout": 3,
+            "statusMessage": "Context recovery: Clean up snapshots at turn end"
+          }
+        ]
+      }
+    ]
+  }
+}

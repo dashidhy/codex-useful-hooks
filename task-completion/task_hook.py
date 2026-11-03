@@ -10,11 +10,11 @@ import sys
 import tempfile
 
 
-CLASSIFY = """Determine whether the user's current request is an execution task. Treat it as a task when the user asks you to carry out work and deliver a result whose completion can be checked. Respect the scope of the request, including requests for discussion or a proposal only.
+CLASSIFY = """Mark this turn for a completion review only if the user asks you to carry out work with multiple milestones or acceptance criteria, and a partial result could plausibly be mistaken for completion. Routine steps or tool calls used to establish a single clear result do not by themselves warrant a review.
 
-For a task, state your classification in a user-visible progress update. Explain what the user expects you to deliver and why that makes this an execution task. Run the supplied command to mark this turn, then proceed with the work.
+If the turn qualifies, explain in a progress update which intermediate result could look complete and what would still need to be delivered or verified. Run the supplied marking command, then proceed.
 
-For other requests, proceed normally without marking the turn or announcing a classification. Use the primary language of the conversation."""
+Otherwise, proceed normally without marking the turn or announcing a classification. Use the primary language of the conversation."""
 
 SELF_CHECK = """Before ending this turn, compare what you have delivered with the user's requested outcome, acceptance criteria, and latest scope constraints. Determine which requirements are satisfied, what evidence supports that judgment, and what work remains.
 

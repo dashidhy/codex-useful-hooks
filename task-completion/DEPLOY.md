@@ -1,6 +1,6 @@
 # Task completion checks
 
-This group asks the main agent to review the result of an execution task before ending the turn. The agent classifies the request using the user's stated scope.
+This group asks the main agent to review work before ending the turn when the user's request has multiple milestones or acceptance criteria and a partial result could plausibly look complete.
 
 ## Install
 
@@ -17,14 +17,14 @@ This group asks the main agent to review the result of an execution task before 
 
 ## What the agent sees
 
-1. On `UserPromptSubmit`, the script injects classification instructions and a turn-specific marking command through `additionalContext`. Submission creates no files. For a request to carry out work and deliver a checkable result, the agent explains in a user-visible progress update what it will deliver and why the request qualifies. It then runs the marking command and carries out the work. For an ordinary question or discussion, it answers directly.
+1. On `UserPromptSubmit`, the script injects classification instructions and a turn-specific marking command through `additionalContext`. Submission creates no files. For a qualifying request, the agent explains in a progress update which intermediate result could look complete and what it would still need to deliver or verify. It then runs the marking command and carries out the work. Ordinary questions and routine steps toward a single clear result normally proceed without marking or a classification announcement.
 2. The marking command creates an empty file identified by session and turn. On the first stop for that marked turn, the handler consumes the marker and returns `decision: "block"` with the self-check instructions in `reason`.
 3. The agent compares what it delivered and verified against the user's requested outcome. For open requirements, it takes the next concrete action using the tools, information, and authorization available. If one part is blocked, it completes independent work and identifies the decision, access, or external change required for the rest.
 4. On the following stop, or on an unmarked turn, the handler allows the turn to end. The classification and self-check prompts live in [task_hook.py](task_hook.py) as `CLASSIFY` and `SELF_CHECK` respectively.
 
 ## Limitations
 
-The review depends on the main agent recognizing an execution task and successfully running the supplied command. Only the stop handler consumes the marker. An interrupted turn may leave its marker in the system temporary directory, but its session and turn identifiers prevent it from triggering another turn's review.
+The review depends on the main agent recognizing a qualifying request and successfully running the supplied command. Only the stop handler consumes the marker. An interrupted turn may leave its marker in the system temporary directory, but its session and turn identifiers prevent it from triggering another turn's review.
 
 ## Verify
 
@@ -36,4 +36,6 @@ python3 -m unittest discover -s tests -v
 
 They check that a marked turn triggers one review and that unmarked turns and other sessions can stop normally.
 
-For a live check, first ask a factual question and verify that Codex answers without announcing a classification or running a marking command. Then ask for a small, verifiable change. Inspect the progress update, marking command, actual change, and verification evidence. At the first stop the agent should receive the self-check once. If work remains and the agent can act, inspect the tool calls and results to confirm that it continues the work.
+For a live check, ask Codex to check whether a particular file is writable. It should report the result without announcing a classification or running the marking command, even if it takes several steps to check.
+
+Then ask Codex to add a feature to an API, connect it to the UI, and verify the flow end to end. Its progress update should explain that a working API would still leave the UI connection and end-to-end check outstanding. Verify that it runs the marking command and receives the self-check once at the first stop. If work remains and the agent can act, inspect the tool calls and results to confirm that it continues the work.

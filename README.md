@@ -1,6 +1,6 @@
 # codex-useful-hooks
 
-Local hooks for Codex, built with Python 3.10+ and its standard library. Install either group independently or use both.
+Local hooks for Codex. Choose the groups you want to install.
 
 | Hook group | What it does |
 | --- | --- |

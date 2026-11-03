@@ -9,7 +9,7 @@ import sys
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
-from hook_state import cleanup, session_directory, snapshot_root
+from hook_state import session_directory, snapshot_root
 
 
 PROMPT = """Context compaction has just completed. Now you should start with assessing and maintaining the completeness of the context information. First, carefully analyze and determine what key information is necessary for conducting current task, what contexts do you have right now, whether any key information has become uncertain or is missing after the compaction, and whether this could block further progress on the current task or introduce potential risks. If some key information fades away and needs to be recovered, try to search and retrieve it as needed from the code, project docs, Git history, and the `conversation history snapshot`.
@@ -22,6 +22,38 @@ If some key information remains uncertain after checking these sources, pause th
 
 Continue responding in the primary language of the current conversation."""
 COPY_CHUNK = 1024 * 1024
+
+
+def owned_snapshot(path: Path) -> bool:
+    """Only our generated filenames are eligible for deletion; never recurse."""
+    name = path.name
+    if not name.endswith(".jsonl"):
+        return False
+    for prefix in ("snapshot-", ".partial-"):
+        if name.startswith(prefix):
+            token = name[len(prefix):-len(".jsonl")]
+            return len(token) == 32 and all(c in "0123456789abcdef" for c in token)
+    return False
+
+
+def cleanup(directory: Path) -> None:
+    if directory.parent.is_symlink() or directory.is_symlink() or not directory.is_dir():
+        return
+    try:
+        entries = list(directory.iterdir())
+    except FileNotFoundError:
+        return
+    for path in entries:
+        try:
+            if not owned_snapshot(path) or path.is_dir():
+                continue
+            path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass  # Another cleanup hook already removed it.
+    try:
+        directory.rmdir()
+    except OSError:
+        pass  # Another snapshot, or an unrelated file, is still here.
 
 
 def completed_prefix_end(source, size: int) -> int:

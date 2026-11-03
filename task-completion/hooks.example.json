@@ -21,7 +21,7 @@
             "type": "command",
             "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/task-completion/task_hook.py",
             "timeout": 3,
-            "statusMessage": "Task check: Review completion and clean up"
+            "statusMessage": "Task check: Review completion"
           }
         ]
       }

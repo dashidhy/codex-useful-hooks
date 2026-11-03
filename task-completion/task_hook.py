@@ -61,6 +61,10 @@ def consume(marker: Path) -> bool:
         marker.unlink()  # Only one Stop invocation can consume the turn's marker.
     except FileNotFoundError:
         return False
+    try:
+        marker.parent.rmdir()
+    except OSError:
+        pass  # The directory may already be gone or still contain other files.
     return True
 
 
@@ -83,8 +87,6 @@ def handle(event: object) -> dict:
         if consume(marker) and not event.get("stop_hook_active", False):
             return {"decision": "block", "reason": SELF_CHECK}
 
-    if name == "Stop":
-        hook_state.cleanup(session)
     return {}
 
 

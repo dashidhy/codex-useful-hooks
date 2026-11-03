@@ -1,13 +1,26 @@
 {
-  "description": "After compaction, recover context from repository files, conversation history, and Git.",
+  "description": "Recover context after compaction and review marked tasks before stopping.",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/task_hook.py",
+            "timeout": 3,
+            "statusMessage": "Task check: Classify this turn",
+            "additionalContextLimit": 1024
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "^compact$",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/simple-context-hook/context_hook.py",
+            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/context_hook.py",
             "timeout": 30,
             "statusMessage": "Context recovery: Prepare history snapshot",
             "additionalContextLimit": 1024
@@ -20,9 +33,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/simple-context-hook/context_hook.py",
+            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/task_hook.py",
             "timeout": 3,
-            "statusMessage": "Context recovery: Clean up snapshots at turn end"
+            "statusMessage": "Task check: Review completion and clean up"
           }
         ]
       }

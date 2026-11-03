@@ -1,11 +1,14 @@
-# simple-context-hook
+# codex-useful-hooks
 
-A simple Codex hook for context check and recovery after compaction.
+Local hooks for Codex. Both run with Python 3.10+ and its standard library.
 
-## How it works
+## Hooks
 
-Code, project documentation, Git history, and conversation history serve as retrievable context sources. After compaction, the hook prompts Codex to assess its remaining context and retrieve any missing or uncertain information needed to continue the current task.
+| Hook | When it runs | What it does |
+| --- | --- | --- |
+| [Context recovery](context_hook.py) | After compaction | Saves a conversation snapshot. Prompts Codex to recover missing task details from the snapshot, code, project docs, or Git history before continuing. |
+| [Task completion check](task_hook.py) | On each request and when Codex tries to finish | Prompts Codex to identify and mark requests for concrete work. On the first stop for a marked turn, Codex checks what it delivered and continues any work it can still complete. Ordinary questions receive a direct answer. |
 
 ## Deployment
 
-Drop [this repository's link](https://github.com/dashidhy/simple-context-hook) into Codex and ask it to help you deploy the hook. Detailed instructions for the agent are in [AGENTS.md](AGENTS.md).
+Give Codex [the repository link](https://github.com/dashidhy/codex-useful-hooks) and ask it to install the hooks for one project or all your projects. Review the installed commands under `/hooks` in the CLI or in Codex’s Hooks settings. See [the agent guide](AGENTS.md#deployment) for the setup steps.

@@ -151,7 +151,7 @@ def handle(event: object, root: Path | None = None) -> dict:
         output["hookSpecificOutput"]["additionalContext"] = (
             PROMPT + "\n\nConversation history snapshot: Could not create a snapshot for this run. Do not assume the conversation history has been recovered."
         )
-        output["systemMessage"] = f"simple-context-hook: Could not create a history snapshot ({error})"
+        output["systemMessage"] = f"codex-useful-hooks: Could not create a history snapshot ({error})"
     return output
 
 
@@ -164,7 +164,7 @@ def main() -> None:
         try:
             result = handle(event)
         except OSError as error:
-            result = {"systemMessage": f"simple-context-hook: File operation failed ({error})"}
+            result = {"systemMessage": f"codex-useful-hooks: File operation failed ({error})"}
     print(json.dumps(result, ensure_ascii=False))
 
 

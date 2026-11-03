@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -178,15 +179,17 @@ class ContextHookTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), {})
             self.assertEqual(result.stderr, "")
 
-    def test_example_wiring_only_compact_and_stop_command_handlers(self):
+    def test_example_wiring_routes_each_event_to_one_command(self):
         config = json.loads((SCRIPT.parent / "hooks.example.json").read_text())
-        self.assertEqual(set(config["hooks"]), {"SessionStart", "Stop"})
-        self.assertEqual(len(config["hooks"]["SessionStart"]), 1)
-        self.assertEqual(config["hooks"]["SessionStart"][0]["matcher"], "^compact$")
-        for groups in config["hooks"].values():
-            for group in groups:
-                for handler in group["hooks"]:
-                    self.assertEqual(handler["type"], "command")
+        expected = {"SessionStart": "context_hook.py", "UserPromptSubmit": "task_hook.py", "Stop": "task_hook.py"}
+        self.assertEqual(set(config["hooks"]), set(expected))
+        for event, script in expected.items():
+            with self.subTest(event=event):
+                group, = config["hooks"][event]
+                self.assertEqual(group.get("matcher"), "^compact$" if event == "SessionStart" else None)
+                handler, = group["hooks"]
+                self.assertEqual(handler["type"], "command")
+                self.assertEqual(Path(shlex.split(handler["command"])[-1]).name, script)
 
 
 if __name__ == "__main__":

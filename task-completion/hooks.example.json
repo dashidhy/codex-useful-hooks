@@ -1,0 +1,30 @@
+{
+  "description": "Review task completion before ending a marked turn.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/task-completion/task_hook.py",
+            "timeout": 3,
+            "statusMessage": "Task check: Classify this turn",
+            "additionalContextLimit": 1024
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/task-completion/task_hook.py",
+            "timeout": 3,
+            "statusMessage": "Task check: Review completion and clean up"
+          }
+        ]
+      }
+    ]
+  }
+}

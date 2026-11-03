@@ -1,0 +1,31 @@
+{
+  "description": "Recover context from a fixed history snapshot after compaction.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^compact$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/compaction/context_hook.py",
+            "timeout": 30,
+            "statusMessage": "Context recovery: Prepare history snapshot",
+            "additionalContextLimit": 1024
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/compaction/context_hook.py",
+            "timeout": 3,
+            "statusMessage": "Context recovery: Clean up snapshots at turn end"
+          }
+        ]
+      }
+    ]
+  }
+}

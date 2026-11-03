@@ -8,6 +8,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+TASK_SCRIPT = ROOT / "task-completion" / "task_hook.py"
+CONTEXT_SCRIPT = ROOT / "compaction" / "context_hook.py"
 
 
 class TaskHookTests(unittest.TestCase):
@@ -23,8 +25,8 @@ class TaskHookTests(unittest.TestCase):
         return {**os.environ, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), str(directory)),
                 "PYTHONDONTWRITEBYTECODE": "1"}
 
-    def invoke(self, payload, script="task_hook.py"):
-        result = subprocess.run([sys.executable, str(ROOT / script)], input=payload, text=True,
+    def invoke(self, payload, script=TASK_SCRIPT):
+        result = subprocess.run([sys.executable, str(script)], input=payload, text=True,
                                 cwd=self.base, env=self.env, capture_output=True, check=True)
         self.assertEqual(result.stderr, "")
         return json.loads(result.stdout)
@@ -69,7 +71,7 @@ class TaskHookTests(unittest.TestCase):
         transcript.write_bytes(b'{"synthetic":true}\n')
         compact = {**self.ids, "hook_event_name": "SessionStart", "source": "compact",
                    "transcript_path": str(transcript)}
-        output = self.invoke(json.dumps(compact), "context_hook.py")["hookSpecificOutput"]
+        output = self.invoke(json.dumps(compact), CONTEXT_SCRIPT)["hookSpecificOutput"]
         snapshot = Path(json.loads(output["additionalContext"].split("Conversation history snapshot: ")[-1]))
         self.assertEqual(self.event("Stop", stop_hook_active=False)["decision"], "block")
         self.assertEqual(snapshot.read_bytes(), transcript.read_bytes())

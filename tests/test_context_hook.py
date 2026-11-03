@@ -10,7 +10,8 @@ import unittest
 from unittest.mock import patch
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "context_hook.py"
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "compaction" / "context_hook.py"
 spec = importlib.util.spec_from_file_location("context_hook", SCRIPT)
 hook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook)
@@ -82,12 +83,24 @@ class ContextHookTests(unittest.TestCase):
         self.assertEqual(list(self.root.glob("**/.partial-*.jsonl")), [])
 
     def test_multiple_snapshots_are_cleaned_at_stop_and_original_survives(self):
-        self.create()
-        self.create()
-        self.assertEqual(len(self.snapshots()), 2)
-        result = hook.handle({"hook_event_name": "Stop", "session_id": "session-a"}, self.root)
-        self.assertEqual(result, {})
-        self.assertEqual(self.snapshots(), [])
+        env = {**os.environ, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), str(self.base))}
+
+        def invoke(event):
+            result = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(event), text=True,
+                                    cwd=self.base, env=env, capture_output=True, check=True)
+            self.assertEqual(result.stderr, "")
+            return json.loads(result.stdout)
+
+        snapshots = []
+        for _ in range(2):
+            context = invoke(self.event)["hookSpecificOutput"]["additionalContext"]
+            snapshot = Path(json.loads(context.split("Conversation history snapshot: ", 1)[1]))
+            self.assertEqual(snapshot.read_bytes(), self.original)
+            snapshots.append(snapshot)
+        self.assertEqual(len(set(snapshots)), 2)
+        self.assertEqual(invoke({"hook_event_name": "Stop", "session_id": "session-a"}), {})
+        for snapshot in snapshots:
+            self.assertFalse(snapshot.exists())
         self.assertEqual(self.transcript.read_bytes(), self.original)
 
     def test_cleanup_is_session_scoped_and_preserves_unrelated_files(self):
@@ -179,17 +192,24 @@ class ContextHookTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), {})
             self.assertEqual(result.stderr, "")
 
-    def test_example_wiring_routes_each_event_to_one_command(self):
-        config = json.loads((SCRIPT.parent / "hooks.example.json").read_text())
-        expected = {"SessionStart": "context_hook.py", "UserPromptSubmit": "task_hook.py", "Stop": "task_hook.py"}
-        self.assertEqual(set(config["hooks"]), set(expected))
-        for event, script in expected.items():
-            with self.subTest(event=event):
-                group, = config["hooks"][event]
-                self.assertEqual(group.get("matcher"), "^compact$" if event == "SessionStart" else None)
-                handler, = group["hooks"]
-                self.assertEqual(handler["type"], "command")
-                self.assertEqual(Path(shlex.split(handler["command"])[-1]).name, script)
+    def test_each_example_routes_its_events_to_one_script(self):
+        for folder, script, start in (("compaction", "context_hook.py", "SessionStart"),
+                                      ("task-completion", "task_hook.py", "UserPromptSubmit")):
+            with self.subTest(folder=folder):
+                hooks = json.loads((ROOT / folder / "hooks.example.json").read_text())["hooks"]
+                self.assertEqual(set(hooks), {start, "Stop"})
+                for event, groups in hooks.items():
+                    group, = groups
+                    self.assertEqual(group.get("matcher"), "^compact$" if event == "SessionStart" else None)
+                    handler, = group["hooks"]
+                    self.assertEqual(handler["type"], "command")
+                    _, command_path = shlex.split(handler["command"])
+                    relative = Path(command_path).relative_to("/ABSOLUTE/PATH/TO/codex-useful-hooks")
+                    self.assertEqual(relative, Path(folder) / script)
+                    self.assertTrue((ROOT / relative).is_file())
+                    self.assertEqual(handler["timeout"], 30 if event == "SessionStart" else 3)
+                    if event != "Stop":
+                        self.assertEqual(handler["additionalContextLimit"], 1024)
 
 
 if __name__ == "__main__":

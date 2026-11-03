@@ -8,7 +8,8 @@ import re
 import shlex
 import sys
 
-import context_hook
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+import hook_state
 
 
 CLASSIFY = """Determine whether the user's current request is an execution task. Treat it as a task when the user asks you to carry out work and deliver a result whose completion can be checked. Respect the scope of the request, including requests for discussion or a proposal only.
@@ -37,7 +38,7 @@ def marking_command(marker: Path) -> str:
 def mark(marker: Path) -> None:
     session = marker.parent
     root = session.parent
-    if (not marker.is_absolute() or root.name != context_hook.snapshot_root().name
+    if (not marker.is_absolute() or root.name != hook_state.snapshot_root().name
             or not re.fullmatch(r"[0-9a-f]{64}", session.name)
             or not re.fullmatch(r"task-[0-9a-f]{64}", marker.name)):
         raise ValueError("Invalid task marker path")
@@ -70,7 +71,7 @@ def handle(event: object) -> dict:
     session_id = event.get("session_id")
     if name not in ("UserPromptSubmit", "Stop") or not isinstance(session_id, str) or not session_id:
         return {}
-    session = context_hook.session_directory(context_hook.snapshot_root(), session_id)
+    session = hook_state.session_directory(hook_state.snapshot_root(), session_id)
     turn_id = event.get("turn_id")
     if isinstance(turn_id, str) and turn_id:
         marker = session / ("task-" + hashlib.sha256(turn_id.encode()).hexdigest())
@@ -83,7 +84,7 @@ def handle(event: object) -> dict:
             return {"decision": "block", "reason": SELF_CHECK}
 
     if name == "Stop":
-        context_hook.cleanup(session)
+        hook_state.cleanup(session)
     return {}
 
 

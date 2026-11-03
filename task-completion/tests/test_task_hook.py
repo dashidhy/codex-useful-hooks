@@ -1,15 +1,16 @@
 import json
 import os
 from pathlib import Path
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-TASK_SCRIPT = ROOT / "task-completion" / "task_hook.py"
-CONTEXT_SCRIPT = ROOT / "compaction" / "context_hook.py"
+GROUP = Path(__file__).resolve().parents[1]
+TASK_SCRIPT = GROUP / "task_hook.py"
 
 
 class TaskHookTests(unittest.TestCase):
@@ -22,8 +23,10 @@ class TaskHookTests(unittest.TestCase):
 
     @staticmethod
     def temp_environment(directory):
-        return {**os.environ, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), str(directory)),
-                "PYTHONDONTWRITEBYTECODE": "1"}
+        env = {**os.environ, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), str(directory)),
+               "PYTHONDONTWRITEBYTECODE": "1"}
+        env.pop("PYTHONPATH", None)
+        return env
 
     def invoke(self, payload, script=TASK_SCRIPT):
         result = subprocess.run([sys.executable, str(script)], input=payload, text=True,
@@ -46,12 +49,20 @@ class TaskHookTests(unittest.TestCase):
         subprocess.run([*shell, command], cwd=self.base, env=env or self.env,
                        capture_output=True, text=True, check=True)
 
-    def create_snapshot(self):
-        transcript = self.base / "transcript.jsonl"
-        transcript.write_bytes(b'{"synthetic":true}\n')
-        output = self.event("SessionStart", script=CONTEXT_SCRIPT, source="compact",
-                            transcript_path=str(transcript))["hookSpecificOutput"]
-        return Path(json.loads(output["additionalContext"].split("Conversation history snapshot: ")[-1]))
+    def test_example_registers_both_events_with_this_script(self):
+        hooks = json.loads((GROUP / "hooks.example.json").read_text())["hooks"]
+        self.assertEqual(set(hooks), {"UserPromptSubmit", "Stop"})
+        for event, groups in hooks.items():
+            with self.subTest(event=event):
+                group, = groups
+                self.assertNotIn("matcher", group)
+                handler, = group["hooks"]
+                self.assertEqual(handler["type"], "command")
+                _, script = shlex.split(handler["command"])
+                self.assertEqual(Path(script), Path("/ABSOLUTE/PATH/TO/task-completion") / TASK_SCRIPT.name)
+                self.assertEqual(handler["timeout"], 3)
+                if event == "UserPromptSubmit":
+                    self.assertEqual(handler["additionalContextLimit"], 1024)
 
     def test_unmarked_question_creates_no_state_and_stops_normally(self):
         self.submit(prompt="How does compaction work?")
@@ -59,46 +70,38 @@ class TaskHookTests(unittest.TestCase):
         self.assertEqual(self.event("Stop", stop_hook_active=False), {})
         self.assertEqual(list(self.base.iterdir()), [])
 
-    def test_mark_command_is_idempotent_and_stop_consumes_the_mark(self):
-        command = self.submit(prompt="Fix the failing test.")
+    def test_standalone_group_marks_idempotently_and_stop_consumes_the_mark(self):
+        install = tempfile.TemporaryDirectory()
+        self.addCleanup(install.cleanup)
+        target = Path(install.name)
+        group = shutil.copytree(GROUP, target / "task-completion",
+                                ignore=shutil.ignore_patterns("__pycache__", "tests", target.name))
+        script = group / TASK_SCRIPT.name
+        command = self.submit(script=script, prompt="Fix the failing test.")
+        self.assertIn(str(script.relative_to(target.parent)), command)
         # The model's tool shell can use a different temporary directory than the hook process.
         shell_tmp = self.base / "shell temp"
         shell_tmp.mkdir()
         for _ in range(2):
             self.mark(command, self.temp_environment(shell_tmp))
-        marker, = self.base.rglob("task-*")
-        response = self.event("Stop", stop_hook_active=False)
+        marker, = (path for path in self.base.rglob("task-*") if path.is_file())
+        response = self.event("Stop", script=script, stop_hook_active=False)
         self.assertEqual(response["decision"], "block")
         self.assertTrue(response["reason"].strip())
         self.assertFalse(marker.parent.exists())
-        self.assertEqual(self.event("Stop", stop_hook_active=False), {})
+        self.assertEqual(self.event("Stop", script=script, stop_hook_active=False), {})
 
-    def test_independent_stop_handlers_work_in_either_order(self):
-        for scripts in ((TASK_SCRIPT, CONTEXT_SCRIPT), (CONTEXT_SCRIPT, TASK_SCRIPT)):
-            with self.subTest(first=scripts[0].name):
-                self.mark(self.submit())
-                snapshot = self.create_snapshot()
-                for script in scripts:
-                    response = self.event("Stop", script=script, stop_hook_active=False)
-                    if script == CONTEXT_SCRIPT:
-                        self.assertEqual(response, {})
-                        self.assertFalse(snapshot.exists())
-                    else:
-                        self.assertEqual(response["decision"], "block")
-                        self.assertEqual(snapshot.exists(), script == scripts[0])
-                self.assertFalse(snapshot.parent.exists())
-
-    def test_unmarked_and_continued_task_stops_leave_snapshots_alone(self):
-        snapshot = self.create_snapshot()
-        self.submit(prompt="How does compaction work?")
-        self.assertEqual(self.event("Stop", stop_hook_active=False), {})
-        self.assertTrue(snapshot.is_file())
-        command = self.submit(prompt="Fix the failing test.", turn_id="turn-two")
+    def test_unmarked_marked_and_continued_stops_preserve_other_files(self):
+        command = self.submit(prompt="Fix the failing test.")
         self.mark(command)
-        self.assertEqual(self.event("Stop", turn_id="turn-two")["decision"], "block")
+        marker, = (path for path in self.base.rglob("task-*") if path.is_file())
+        snapshot = marker.with_name("snapshot-" + "a" * 32 + ".jsonl")
+        snapshot.write_bytes(b'{"synthetic":true}\n')
+        self.assertEqual(self.event("Stop", turn_id="unmarked"), {})
+        self.assertEqual(self.event("Stop")["decision"], "block")
         self.mark(command)
-        self.assertEqual(self.event("Stop", turn_id="turn-two", stop_hook_active=True), {})
-        self.assertEqual(self.event("Stop", turn_id="turn-two"), {})
+        self.assertEqual(self.event("Stop", stop_hook_active=True), {})
+        self.assertEqual(self.event("Stop"), {})
         self.assertEqual(snapshot.read_bytes(), b'{"synthetic":true}\n')
 
     def test_mark_is_isolated_by_session_and_turn(self):

@@ -2,14 +2,13 @@
 """A small Codex context-recovery hook. Python 3.10+, standard library only."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import uuid
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
-from hook_state import session_directory, snapshot_root
 
 
 PROMPT = """Context compaction has just completed. Now you should start with assessing and maintaining the completeness of the context information. First, carefully analyze and determine what key information is necessary for conducting current task, what contexts do you have right now, whether any key information has become uncertain or is missing after the compaction, and whether this could block further progress on the current task or introduce potential risks. If some key information fades away and needs to be recovered, try to search and retrieve it as needed from the code, project docs, Git history, and the `conversation history snapshot`.
@@ -22,6 +21,17 @@ If some key information remains uncertain after checking these sources, pause th
 
 Continue responding in the primary language of the current conversation."""
 COPY_CHUNK = 1024 * 1024
+
+
+def snapshot_root() -> Path:
+    uid = str(os.getuid()) if hasattr(os, "getuid") else hashlib.sha256(
+        str(Path.home()).encode()
+    ).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"simple-context-hook-{uid}"
+
+
+def session_directory(root: Path, session_id: str) -> Path:
+    return root / hashlib.sha256(session_id.encode()).hexdigest()
 
 
 def owned_snapshot(path: Path) -> bool:

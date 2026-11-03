@@ -7,9 +7,7 @@ from pathlib import Path
 import re
 import shlex
 import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
-import hook_state
+import tempfile
 
 
 CLASSIFY = """Determine whether the user's current request is an execution task. Treat it as a task when the user asks you to carry out work and deliver a result whose completion can be checked. Respect the scope of the request, including requests for discussion or a proposal only.
@@ -27,6 +25,13 @@ If further progress requires the user's input, explain exactly what is blocked, 
 Once the requested outcome is complete, finish with the relevant verification results. Avoid repeating results the user has already received. Use the primary language of the conversation."""
 
 
+def marker_root() -> Path:
+    uid = str(os.getuid()) if hasattr(os, "getuid") else hashlib.sha256(
+        str(Path.home()).encode()
+    ).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"simple-context-hook-{uid}"
+
+
 def marking_command(marker: Path) -> str:
     # Pass the absolute path because the tool shell may have a different TMPDIR.
     args = [sys.executable, str(Path(__file__).resolve()), "mark", str(marker)]
@@ -38,7 +43,7 @@ def marking_command(marker: Path) -> str:
 def mark(marker: Path) -> None:
     session = marker.parent
     root = session.parent
-    if (not marker.is_absolute() or root.name != hook_state.snapshot_root().name
+    if (not marker.is_absolute() or root.name != marker_root().name
             or not re.fullmatch(r"[0-9a-f]{64}", session.name)
             or not re.fullmatch(r"task-[0-9a-f]{64}", marker.name)):
         raise ValueError("Invalid task marker path")
@@ -75,7 +80,7 @@ def handle(event: object) -> dict:
     session_id = event.get("session_id")
     if name not in ("UserPromptSubmit", "Stop") or not isinstance(session_id, str) or not session_id:
         return {}
-    session = hook_state.session_directory(hook_state.snapshot_root(), session_id)
+    session = marker_root() / hashlib.sha256(session_id.encode()).hexdigest()
     turn_id = event.get("turn_id")
     if isinstance(turn_id, str) and turn_id:
         marker = session / ("task-" + hashlib.sha256(turn_id.encode()).hexdigest())

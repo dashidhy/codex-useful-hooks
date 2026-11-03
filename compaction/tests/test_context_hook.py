@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,8 +11,8 @@ import unittest
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "compaction" / "context_hook.py"
+GROUP = Path(__file__).resolve().parents[1]
+SCRIPT = GROUP / "context_hook.py"
 spec = importlib.util.spec_from_file_location("context_hook", SCRIPT)
 hook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook)
@@ -82,11 +83,16 @@ class ContextHookTests(unittest.TestCase):
         self.assertEqual(self.snapshots(), [])
         self.assertEqual(list(self.root.glob("**/.partial-*.jsonl")), [])
 
-    def test_multiple_snapshots_are_cleaned_at_stop_and_original_survives(self):
+    def test_standalone_group_cleans_multiple_snapshots_and_preserves_original(self):
+        install = tempfile.TemporaryDirectory()
+        self.addCleanup(install.cleanup)
+        group = shutil.copytree(SCRIPT.parent, Path(install.name) / "compaction",
+                                ignore=shutil.ignore_patterns("__pycache__", Path(install.name).name))
         env = {**os.environ, **dict.fromkeys(("TMPDIR", "TEMP", "TMP"), str(self.base))}
+        env.pop("PYTHONPATH", None)
 
         def invoke(event):
-            result = subprocess.run([sys.executable, str(SCRIPT)], input=json.dumps(event), text=True,
+            result = subprocess.run([sys.executable, str(group / SCRIPT.name)], input=json.dumps(event), text=True,
                                     cwd=self.base, env=env, capture_output=True, check=True)
             self.assertEqual(result.stderr, "")
             return json.loads(result.stdout)
@@ -192,24 +198,20 @@ class ContextHookTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), {})
             self.assertEqual(result.stderr, "")
 
-    def test_each_example_routes_its_events_to_one_script(self):
-        for folder, script, start in (("compaction", "context_hook.py", "SessionStart"),
-                                      ("task-completion", "task_hook.py", "UserPromptSubmit")):
-            with self.subTest(folder=folder):
-                hooks = json.loads((ROOT / folder / "hooks.example.json").read_text())["hooks"]
-                self.assertEqual(set(hooks), {start, "Stop"})
-                for event, groups in hooks.items():
-                    group, = groups
-                    self.assertEqual(group.get("matcher"), "^compact$" if event == "SessionStart" else None)
-                    handler, = group["hooks"]
-                    self.assertEqual(handler["type"], "command")
-                    _, command_path = shlex.split(handler["command"])
-                    relative = Path(command_path).relative_to("/ABSOLUTE/PATH/TO/codex-useful-hooks")
-                    self.assertEqual(relative, Path(folder) / script)
-                    self.assertTrue((ROOT / relative).is_file())
-                    self.assertEqual(handler["timeout"], 30 if event == "SessionStart" else 3)
-                    if event != "Stop":
-                        self.assertEqual(handler["additionalContextLimit"], 1024)
+    def test_compaction_example_registers_snapshot_creation_and_cleanup(self):
+        hooks = json.loads((GROUP / "hooks.example.json").read_text())["hooks"]
+        self.assertEqual(set(hooks), {"SessionStart", "Stop"})
+        for event, groups in hooks.items():
+            with self.subTest(event=event):
+                group, = groups
+                handler, = group["hooks"]
+                self.assertEqual(handler["type"], "command")
+                _, command_path = shlex.split(handler["command"])
+                self.assertEqual(Path(command_path).parts[-2:], ("compaction", SCRIPT.name))
+                self.assertEqual(group.get("matcher"), "^compact$" if event == "SessionStart" else None)
+                self.assertEqual(handler["timeout"], 30 if event == "SessionStart" else 3)
+                if event == "SessionStart":
+                    self.assertEqual(handler["additionalContextLimit"], 1024)
 
 
 if __name__ == "__main__":

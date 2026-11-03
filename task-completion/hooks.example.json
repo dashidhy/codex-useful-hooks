@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/task-completion/task_hook.py",
+            "command": "python3 /ABSOLUTE/PATH/TO/task-completion/task_hook.py",
             "timeout": 3,
             "statusMessage": "Task check: Classify this turn",
             "additionalContextLimit": 1024
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/codex-useful-hooks/task-completion/task_hook.py",
+            "command": "python3 /ABSOLUTE/PATH/TO/task-completion/task_hook.py",
             "timeout": 3,
             "statusMessage": "Task check: Review completion"
           }
